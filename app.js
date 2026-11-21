@@ -1128,7 +1128,7 @@ class App extends PreactComponent {
     var viewH = st.viewH || 800, portrait = !!st.portrait;
     var worldTop = portrait ? Math.max(0, Math.round((viewH - 800) * 0.55)) : 0;
     vals.viewH = viewH; vals.worldTop = worldTop; vals.worldTopPx = worldTop - 2;
-    vals.stageBg = portrait ? 'linear-gradient(#0B2140 0px, #163A5C ' + worldTop + 'px, #3A2418 ' + (worldTop + 800) + 'px, #20140E 100%)' : '#1B4A6E';
+    vals.stageBg = portrait ? 'linear-gradient(#024F79 0px, #024F79 ' + worldTop + 'px, #6E3424 ' + (worldTop + 800) + 'px, #3A1E14 100%)' : '#1B4A6E';
     vals.tapeTop = worldTop + 4; vals.captionTop = worldTop + 704;
     vals.cdTop = portrait ? Math.max(54, Math.round(worldTop * 0.3)) : 54;
     vals.hintTop = portrait ? Math.max(176, worldTop + 150) : 176;
@@ -1257,6 +1257,12 @@ App.prototype.render = function () {
   
   <div ref=${v.refWorld} style="position: absolute; left: 0px; top: ${v.worldTopPx}px; width: ${v.worldW}px; height: 802px; transform: translateX(${v.camWorld}px); will-change: transform">
     <img src="assets/winter-world.webp" alt="" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 3600px; height: 802px; display: block" />
+    
+    <div aria-hidden="true" style="position: absolute; left: 0; top: -280px; width: 3600px; height: 280px; background-image: url(assets/winter-world.webp); background-size: 3600px 802px; background-position: 0 0; transform: scaleY(-1)"></div>
+    <div aria-hidden="true" style="position: absolute; left: 0; top: -560px; width: 3600px; height: 280px; background-image: url(assets/winter-world.webp); background-size: 3600px 802px; background-position: 0 0"></div>
+    <div aria-hidden="true" style="position: absolute; left: 0; top: -840px; width: 3600px; height: 280px; background-image: url(assets/winter-world.webp); background-size: 3600px 802px; background-position: 0 0; transform: scaleY(-1)"></div>
+    <div aria-hidden="true" style="position: absolute; left: 0; top: -1120px; width: 3600px; height: 280px; background-image: url(assets/winter-world.webp); background-size: 3600px 802px; background-position: 0 0"></div>
+    <div aria-hidden="true" style="position: absolute; left: 0; top: 800px; width: 3600px; height: 1400px; border-top: 6px solid #5E2F1C; box-sizing: border-box; background-image: linear-gradient(rgba(24,12,8,0) 0px, rgba(24,12,8,.35) 260px, rgba(24,12,8,.6) 700px), url(assets/dirt-tile.png); background-size: auto, 96px 96px; image-rendering: pixelated"></div>
 
     
     ${(v.cloudsW || []).map((c, $index) => html`
