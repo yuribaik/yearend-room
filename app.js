@@ -348,6 +348,15 @@ class App extends PreactComponent {
     this.onStage = function () { VIEW_W = window.STAGE_W || 1280; self.setState({ viewW: VIEW_W, viewH: window.STAGE_H || 800, portrait: !!window.STAGE_PORTRAIT }); };
     window.addEventListener('stageresize', this.onStage);
     this.onStage();
+    try {
+      var saved = JSON.parse(window.localStorage.getItem('yr_me') || 'null');
+      if (saved && saved.nick) {
+        if (typeof saved.x === 'number') this.pos.x = saved.x;
+        this.pendingPublish = true;
+        this.setState({ nick: saved.nick, line: saved.line || '', cfg: Object.assign({}, DEFAULT_CFG, saved.cfg || {}), screen: 'room', started: true, returning: true, px: Math.round(this.pos.x) });
+        this.showToast('다시 왔구나! 저장된 캐릭터로 입장했어요');
+      }
+    } catch (err) {}
     this.initNet();
   }
   componentWillUnmount() {
@@ -578,13 +587,16 @@ class App extends PreactComponent {
     var self = this, D = this.fb.D, db = this.fb.db;
     D.onValue(D.ref(db, 'players'), function (snap) { self.setState({ players: snap.val() || {} }); });
     D.onValue(D.ref(db, 'replies'), function (snap) { self.setState({ repliesDb: snap.val() || {} }); });
+    this.setState({ netMode: 'online', myUid: this.myUid });
     D.get(D.ref(db, 'players/' + this.myUid)).then(function (snap) {
       var me = snap.val();
-      if (!me || (self.state && self.state.screen === 'room')) return;
+      if (self.state && self.state.screen === 'room') { self.publishMe(); return; }
+      if (!me || !me.name) return;
       if (typeof me.x === 'number' && self.pos) self.pos.x = me.x;
-      self.setState({ nick: me.name || '', line: me.line || '', cfg: Object.assign({}, DEFAULT_CFG, me.cfg || {}), returning: true, px: Math.round(self.pos ? self.pos.x : START_X) });
+      self.setState({ nick: me.name || '', line: me.line || '', cfg: Object.assign({}, DEFAULT_CFG, me.cfg || {}), returning: true, screen: 'room', started: true, px: Math.round(self.pos ? self.pos.x : START_X) });
+      self.publishMe();
+      self.showToast('다시 왔구나! 저장된 캐릭터로 입장했어요');
     });
-    this.setState({ netMode: 'online', myUid: this.myUid });
   }
   publishMe() {
     if (!this.fb || !this.myUid) return;
@@ -599,6 +611,15 @@ class App extends PreactComponent {
     if (!existing || !existing.createdAt) data.createdAt = D.serverTimestamp();
     D.update(r, data);
     D.onDisconnect(r).update({ online: false, moving: false });
+    this.saveLocal();
+  }
+  saveLocal() {
+    var st = this.state || {};
+    try { window.localStorage.setItem('yr_me', JSON.stringify({ nick: st.nick || '', line: st.line || '', cfg: Object.assign({}, DEFAULT_CFG, st.cfg || {}), x: Math.round(this.pos ? this.pos.x : START_X) })); } catch (err) {}
+  }
+  ensureMusic() {
+    if (this.musicTimer || (this.state && this.state.soundOff) || !(this.state && this.state.screen === 'room')) return;
+    this.audioInit(); this.musicStart();
   }
   syncPos(t, moving) {
     if (!this.fb || !this.myUid || !this.state || this.state.screen !== 'room') return;
@@ -606,6 +627,7 @@ class App extends PreactComponent {
     var sig = Math.round(p.x) + '|' + Math.round(p.y / 6) + '|' + p.facing + '|' + moving + '|' + sitting;
     if (sig === this.lastSig || (this.lastSync && t - this.lastSync < 100)) return;
     this.lastSig = sig; this.lastSync = t;
+    if (!moving) this.saveLocal();
     var D = this.fb.D;
     D.update(D.ref(this.fb.db, 'players/' + this.myUid), {
       x: Math.round(p.x), y: Math.round(p.y), facing: p.facing, moving: moving, sitting: sitting,
@@ -1065,6 +1087,7 @@ class App extends PreactComponent {
       start: function () { self.setState({ started: true }); if (self.rootEl) self.rootEl.focus(); },
       onKeyDown: function (e) {
         if (!self.state || self.state.screen !== 'room') return;
+        self.ensureMusic();
         if (e.target && e.target.tagName === 'INPUT') return;
         if (e.key === 'Escape') { if (self.state.thread != null) vals.closeThread(); else if (self.state.photo) vals.closePhoto(); else if (self.state.inviteOpen) vals.closeInvite(); return; }
         if (self.modalOpen()) return;
@@ -1090,6 +1113,7 @@ class App extends PreactComponent {
       },
       focusRoot: function () {
         if (!self.state || self.state.screen !== 'room') return;
+        self.ensureMusic();
         if (self.rootEl && document.activeElement !== self.rootEl) {
           try { self.rootEl.focus({ preventScroll: true }); } catch (err) {}
         }
@@ -1154,6 +1178,7 @@ class App extends PreactComponent {
       if (!(self.state && self.state.soundOff)) { self.audioInit(); self.musicStart(); }
       if (self.fb && self.myUid) self.publishMe();
       else if (self.state && self.state.netMode !== 'online') self.showToast('온라인 설정 전이라 나만 보이는 모드예요');
+      self.saveLocal();
     };
     // touch
     function hold(name, on) { return function (e) { if (e && e.preventDefault) e.preventDefault(); self.keys[name] = on; }; }
