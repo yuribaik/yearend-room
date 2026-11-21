@@ -448,7 +448,7 @@ class App extends PreactComponent {
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(function () { self.setState({ toast: '' }); }, 2600);
   }
-  modalOpen() { var st = this.state || {}; return st.thread != null || !!st.photo || !!st.inviteOpen; }
+  modalOpen() { var st = this.state || {}; return st.thread != null || !!st.photo || !!st.inviteOpen || !!st.chatOpen; }
   toggleSit() {
     var p = this.pos; if (!p) return;
     if (this.sitting != null) { this.sitting = null; this.sfx('stand'); this.setState({ sitting: null }); return; }
@@ -587,6 +587,17 @@ class App extends PreactComponent {
     var self = this, D = this.fb.D, db = this.fb.db;
     D.onValue(D.ref(db, 'players'), function (snap) { self.setState({ players: snap.val() || {} }); });
     D.onValue(D.ref(db, 'replies'), function (snap) { self.setState({ repliesDb: snap.val() || {} }); });
+    D.onValue(D.query(D.ref(db, 'chat'), D.orderByChild('at'), D.limitToLast(40)), function (snap) {
+      var val = snap.val() || {}, now = Date.now(), first = !self.chatLoaded;
+      if (!self.chatSeen) self.chatSeen = {};
+      var arr = Object.keys(val).map(function (id) { return Object.assign({ id: id }, val[id]); })
+        .filter(function (m) { return m && m.text; })
+        .sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+      arr.forEach(function (m) { if (self.chatSeen[m.id] == null) self.chatSeen[m.id] = first ? 0 : now; });
+      self.chatLoaded = true;
+      if (!first && arr.length && self.chatSeen[arr[arr.length - 1].id] === now && arr[arr.length - 1].uid !== self.myUid) self.sfx('open');
+      self.setState({ chat: arr });
+    });
     this.setState({ netMode: 'online', myUid: this.myUid });
     D.get(D.ref(db, 'players/' + this.myUid)).then(function (snap) {
       var me = snap.val();
@@ -663,6 +674,27 @@ class App extends PreactComponent {
     return out;
   }
   myKey() { return this.myUid || 'me'; }
+  recentChat(uid) {
+    var list = (this.state && this.state.chat) || [], seen = this.chatSeen || {}, now = Date.now();
+    for (var i = list.length - 1; i >= 0; i--) {
+      var m = list[i];
+      if (m.uid === uid) return (seen[m.id] && now - seen[m.id] < 6000) ? m.text : null;
+    }
+    return null;
+  }
+  sendChat(text) {
+    var st = this.state || {}, who = (st.nick || '나').trim() || '나';
+    if (!this.chatSeen) this.chatSeen = {};
+    if (this.fb && this.myUid) {
+      var D = this.fb.D;
+      D.push(D.ref(this.fb.db, 'chat'), { uid: this.myUid, name: who, text: text, at: D.serverTimestamp() });
+    } else {
+      var id = 'local' + Date.now();
+      this.chatSeen[id] = Date.now();
+      this.setState({ chat: (st.chat || []).concat([{ id: id, uid: this.myKey(), name: who, text: text, at: Date.now() }]).slice(-40) });
+    }
+    this.sfx('post');
+  }
   statics() {
     if (this._s) return this._s;
     var P = 7;
@@ -1002,12 +1034,13 @@ class App extends PreactComponent {
       var ch = self.charFor(o.uid, o.cfg);
       var walking = !!o.moving && !o.sitting && !!o.online;
       var fx = Math.round(typeof o.x === 'number' ? o.x : START_X);
-      var f = { name: o.name, line: o.line || '반가워!', x: fx, delay: (i % 3) * 0.4,
+      var said = self.recentChat(o.uid);
+      var f = { name: o.name, line: said || o.line || '반가워!', saying: !!said, x: fx, delay: (i % 3) * 0.4,
         shadow: o.sitting ? ch.sit : ch.front, s1: ch.s1, s2: ch.s2, s3: ch.s3, walking: walking, still: !walking,
         bodyCls: walking ? 'walk' : (o.sitting || (o.y || 0) > 0 ? 'still' : 'bob'), flip: o.facing || 1,
         dy: (o.sitting ? (o.sitType === 'bench' ? 4 : 16) : 0) - Math.round(o.y || 0),
-        op: o.online ? 1 : 0.55, nameText: o.online ? o.name : o.name + ' · 자리 비움' };
-      return Object.assign(f, { open: function () { self.openThread(o.uid); }, hasReplies: rl.length > 0, replyCount: rl.length, hx: fx + 10, bubbleBg: near ? accent : '#FFFFFF', tail: near ? tailAccent : tailWhite, lift: near ? -6 : 0 });
+        op: 1, nameText: o.online ? o.name : o.name + ' · 자리 비움' };
+      return Object.assign(f, { open: function () { self.openThread(o.uid); }, hasReplies: rl.length > 0, replyCount: rl.length, hx: fx + 10, bubbleBg: f.saying ? '#FFF3C4' : (near ? accent : '#FFFFFF'), tail: near ? tailAccent : tailWhite, lift: near ? -6 : 0 });
     });
     var started = !!st.started;
     var screen = st.screen || 'entry';
@@ -1089,10 +1122,10 @@ class App extends PreactComponent {
         if (!self.state || self.state.screen !== 'room') return;
         self.ensureMusic();
         if (e.target && e.target.tagName === 'INPUT') return;
-        if (e.key === 'Escape') { if (self.state.thread != null) vals.closeThread(); else if (self.state.photo) vals.closePhoto(); else if (self.state.inviteOpen) vals.closeInvite(); return; }
+        if (e.key === 'Escape') { if (self.state.chatOpen) vals.closeChat(); else if (self.state.thread != null) vals.closeThread(); else if (self.state.photo) vals.closePhoto(); else if (self.state.inviteOpen) vals.closeInvite(); return; }
         if (self.modalOpen()) return;
         if (e.key === 'ArrowDown') { e.preventDefault(); self.toggleSit(); return; }
-        if (e.key === 'Enter') { e.preventDefault(); var nf = self.state.near, rs = self.roster(); if (nf != null && nf >= 0 && rs[nf]) self.openThread(rs[nf].uid); return; }
+        if (e.key === 'Enter') { e.preventDefault(); vals.openChat(); return; }
         var n = self.keyName(e);
         if (!n) return;
         e.preventDefault();
@@ -1130,7 +1163,7 @@ class App extends PreactComponent {
     vals.viewH = viewH; vals.worldTop = worldTop; vals.worldTopPx = worldTop - 2;
     vals.stageBg = portrait ? 'linear-gradient(#024F79 0px, #024F79 ' + worldTop + 'px, #6E3424 ' + (worldTop + 800) + 'px, #3A1E14 100%)' : '#1B4A6E';
     vals.tapeTop = worldTop + 4; vals.captionTop = worldTop + 704;
-    vals.cdTop = portrait ? Math.max(90, Math.round(worldTop * 0.55)) : 54;
+    vals.cdTop = portrait ? Math.max(90, Math.round(worldTop * 0.62)) : 54;
     vals.hintTop = portrait ? Math.max(176, worldTop + 150) : 176;
     vals.sitTop = vals.hintTop + 40;
     vals.rsvpPad = VIEW_W < 900 ? 0 : 28; vals.rsvpBorder = VIEW_W < 900 ? 'none' : '3px dashed #C9B998';
@@ -1158,7 +1191,36 @@ class App extends PreactComponent {
     vals.cdParts = [{ v: String(dd), l: '일', sep: false }, { v: two(hh), l: '시간', sep: true }, { v: two(mm), l: '분', sep: true }, { v: two(ss), l: '초', sep: true }];
     // HUD + prompts
     vals.showHud = screen === 'room' && !st.photo;
-    vals.hintText = st.isTouch ? '버튼으로 걷고 점프 · 말풍선을 누르면 댓글' : '← → 걷기 · SPACE 점프 · ↓ 앉기 · ENTER 또는 말풍선 클릭으로 댓글';
+    vals.hintText = st.isTouch ? '버튼으로 걷고 점프 · 채팅 버튼으로 대화 · 말풍선을 누르면 댓글' : '← → 걷기 · SPACE 점프 · ↓ 앉기 · ENTER 채팅 · 말풍선 클릭으로 댓글';
+    // chat
+    var myChat = this.recentChat(this.myKey());
+    vals.myBubble = myChat || vals.myLine; vals.myBubbleBg = myChat ? '#FFF3C4' : '#FFFFFF';
+    vals.chatOpen = !!st.chatOpen;
+    vals.showHint = !st.chatOpen;
+    vals.chatTop = vals.hintTop;
+    var chatAll = st.chat || [], myK = this.myKey();
+    var lastFive = chatAll.slice(-5);
+    vals.chatLog = lastFive.map(function (m, i) { return { name: m.name, text: m.text, op: (0.55 + 0.45 * (i + 1) / lastFive.length).toFixed(2), nameColor: m.uid === myK ? '#FFD54A' : '#9FD3FF' }; });
+    vals.showChatLog = screen === 'room' && !st.photo && lastFive.length > 0;
+    vals.chatDraft = st.chatDraft || '';
+    vals.setChatInput = function (el) { self.chatInputEl = el; };
+    vals.openChat = function () {
+      if (!self.state || self.state.screen !== 'room') return;
+      self.keys = {};
+      self.setState({ chatOpen: true });
+      setTimeout(function () { if (self.chatInputEl) { try { self.chatInputEl.focus(); } catch (err) {} } }, 30);
+    };
+    vals.closeChat = function () { self.setState({ chatOpen: false, chatDraft: '' }); focusStage(); };
+    vals.onChatDraft = function (e) { self.setState({ chatDraft: Array.from(e.target.value).slice(0, 60).join('') }); };
+    vals.sendChat = function () {
+      var text = ((self.state && self.state.chatDraft) || '').trim();
+      if (text) self.sendChat(text);
+      self.setState({ chatOpen: false, chatDraft: '' }); focusStage();
+    };
+    vals.onChatKey = function (e) {
+      if (e.key === 'Escape') { vals.closeChat(); return; }
+      if (e.key === 'Enter' && !(e.nativeEvent && e.nativeEvent.isComposing) && !e.isComposing) { e.preventDefault(); vals.sendChat(); }
+    };
     var seatIdx = st.sitting != null ? st.sitting : (st.seatNear != null ? st.seatNear : -1);
     vals.showSitPrompt = screen === 'room' && !modal && seatIdx >= 0 && !st.isTouch;
     vals.sitPrompt = st.sitting != null ? '← → 를 누르면 일어나요' : (SEATS[seatIdx] && SEATS[seatIdx].type === 'pond' ? '↓ 연못가에 앉기' : '↓ 벤치에 앉기');
@@ -1346,7 +1408,7 @@ App.prototype.render = function () {
     ${v.inRoom ? html`
     <div ref=${v.refPlayer} style="position: absolute; left: ${v.px}px; top: 456px; width: 170px; height: 296px; padding-bottom: 42px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; z-index: 5">
       <div ref=${v.refLift} style="display: flex; flex-direction: column; align-items: center; transform: translateY(-${v.py}px)">
-        <button type="button" class="bubble-btn" onClick=${v.openMine} aria-label="내 한마디에 달린 댓글 보기"><div class="pxb"><div class="pxb-in" style="background: #FFFFFF">${v.myLine}${v.meHasReplies ? html`<span class="reply-tag">댓글 ${v.meReplyCount}</span>` : null}</div></div></button>
+        <button type="button" class="bubble-btn" onClick=${v.openMine} aria-label="내 한마디에 달린 댓글 보기"><div class="pxb"><div class="pxb-in" style="background: ${v.myBubbleBg}">${v.myBubble}${v.meHasReplies ? html`<span class="reply-tag">댓글 ${v.meReplyCount}</span>` : null}</div></div></button>
         <div class="pxtail"><div style="position: absolute; left: 0; top: 0; width: 3px; height: 3px; box-shadow: ${v.tailWhite}"></div></div>
         <div class="pxname"><span style="font-family: 'Press Start 2P', monospace; font-size: 8px; background: ${v.accent}; color: #1B1719; text-shadow: none; padding: 3px 4px; border: 2px solid #1B1719">ME</span>${v.myName}</div>
         <div class=${v.bodyCls} style="position: relative; width: 130px; height: 155px">
@@ -1408,7 +1470,9 @@ App.prototype.render = function () {
   
   ${v.showHud ? html`
     <div style="position: absolute; left: calc(50% - 300px); top: ${v.hintTop}px; width: 600px; display: flex; justify-content: center; pointer-events: none">
-      <div style="padding: 7px 14px; background: rgba(14,34,56,.6); color: #FFF4D6; font-size: 14px">${v.hintText}</div>
+      ${v.showHint ? html`
+        <div style="padding: 7px 14px; background: rgba(14,34,56,.6); color: #FFF4D6; font-size: 14px">${v.hintText}</div>
+      ` : null}
     </div>
     <div style="position: absolute; left: 24px; top: 20px; display: flex; align-items: center; gap: 10px; background: rgba(14,34,56,.85); color: #FFFFFF; padding: 10px 16px; font-family: 'Press Start 2P', monospace; font-size: 12px">
       <span style="width: 8px; height: 8px; background: #7FE08A"></span>
@@ -1437,6 +1501,7 @@ App.prototype.render = function () {
       <button type="button" class="pxbtn touch-btn" aria-label="오른쪽으로 걷기" onPointerDown=${v.tRightDown} onPointerUp=${v.tRightUp} onPointerLeave=${v.tRightUp} onPointerCancel=${v.tRightUp}>▶</button>
     </div>
     <div style="position: absolute; right: 28px; bottom: 28px; display: flex; gap: 16px; align-items: flex-end; z-index: 15">
+      <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.openChat}>채팅</button>
       ${v.touchTalk ? html`
         <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.openNear}>댓글</button>
       ` : null}
@@ -1444,6 +1509,23 @@ App.prototype.render = function () {
         <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.toggleSit}>${v.sitShort}</button>
       ` : null}
       <button type="button" class="pxbtn touch-btn" style="width: 140px; background: ${v.accent}; font-size: 22px" aria-label="점프" onPointerDown=${v.tJumpDown} onPointerUp=${v.tJumpUp} onPointerLeave=${v.tJumpUp} onPointerCancel=${v.tJumpUp}>점프</button>
+    </div>
+  ` : null}
+
+  
+  ${v.showChatLog ? html`
+    <div aria-live="polite" style="position: absolute; left: 24px; top: 72px; width: 380px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; z-index: 8">
+      ${(v.chatLog || []).map((m, $index) => html`
+        <div style="max-width: 380px; padding: 4px 10px; background: rgba(8,22,40,.66); color: #FFF4D6; font-size: 14px; line-height: 1.35; opacity: ${m.op}"><span style="color: ${m.nameColor}">${m.name}</span> ${m.text}</div>
+      `)}
+    </div>
+  ` : null}
+  ${v.chatOpen ? html`
+    <div style="position: absolute; left: calc(50% - 290px); top: ${v.chatTop}px; width: 580px; display: flex; gap: 8px; z-index: 35">
+      <label for="chat-input" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">채팅 입력</label>
+      <input id="chat-input" ref=${v.setChatInput} type="text" value=${v.chatDraft} onInput=${v.onChatDraft} onKeyDown=${v.onChatKey} placeholder="메시지를 입력하고 Enter (최대 60자)" style="flex: 1; min-width: 0; height: 52px; padding: 0 14px; font-family: 'Jua', sans-serif; font-size: 18px; border: 3px solid #0E2238; background: #FFFFFF; color: #0E2238; box-sizing: border-box" />
+      <button type="button" class="pxbtn" onClick=${v.sendChat} style="height: 52px; padding: 0 18px; background: ${v.accent}; border: 3px solid #0E2238; box-shadow: 0 4px 0 #0E2238; color: #0E2238; font-family: 'Jua', sans-serif; font-size: 18px">보내기</button>
+      <button type="button" class="pxbtn" onClick=${v.closeChat} aria-label="채팅 닫기" style="width: 52px; height: 52px; background: #FFFFFF; border: 3px solid #0E2238; font-family: 'Press Start 2P', monospace; font-size: 12px; color: #0E2238">X</button>
     </div>
   ` : null}
 
