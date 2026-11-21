@@ -6,6 +6,7 @@ const html = htm.bind(h);
 
 var WORLD_W = 3600, VIEW_W = (typeof window !== 'undefined' && window.STAGE_W) || 1280, START_X = 1560;
 var INVITE_URL = (typeof location !== 'undefined') ? location.origin + location.pathname : '';
+var BOARD_X = 2095, MEMO_COLORS = ['#FFF3A8', '#FFD1DC', '#CDEBFF', '#D7F5C8', '#FFE2B8'];
 var SEATS = [{ x: 470, type: 'pond' }, { x: 1020, type: 'bench' }, { x: 1640, type: 'bench' }, { x: 1950, type: 'pond' }, { x: 2750, type: 'pond' }, { x: 3330, type: 'bench' }];
 var SEED_REPLIES = {};
 var FB_VERSION = '10.12.2';
@@ -448,7 +449,7 @@ class App extends PreactComponent {
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(function () { self.setState({ toast: '' }); }, 2600);
   }
-  modalOpen() { var st = this.state || {}; return st.thread != null || !!st.photo || !!st.inviteOpen || !!st.chatOpen; }
+  modalOpen() { var st = this.state || {}; return st.thread != null || !!st.photo || !!st.inviteOpen || !!st.chatOpen || !!st.boardOpen || !!st.peopleOpen; }
   toggleSit() {
     var p = this.pos; if (!p) return;
     if (this.sitting != null) { this.sitting = null; this.sfx('stand'); this.setState({ sitting: null }); return; }
@@ -552,11 +553,12 @@ class App extends PreactComponent {
     if (moving && !air && (!this.lastStepT || t - this.lastStepT > 340)) { this.lastStepT = t; this.sfx('step'); }
     var seatNear = -1;
     if (this.sitting == null) SEATS.forEach(function (seat, i) { if (Math.abs(seat.x - me) < 70) seatNear = i; });
+    var boardNear = this.sitting == null && Math.abs(BOARD_X - me) < 85;
     var burst = null;
     if (tree >= 0 && (tree !== this.lastTree || jumpedNow)) { this.burstN = (this.burstN || 0) + 1; burst = { burstTree: tree, burstN: this.burstN }; this.sfx('snow'); }
     this.lastTree = tree;
-    if (burst || s.near !== near || s.moving !== moving || s.facing !== p.facing || s.air !== air || s.nearLamp !== lamp || s.onPond !== (pond && !air) || s.seatNear !== seatNear) {
-      this.setState(Object.assign({ near: near, moving: moving, facing: p.facing, air: air, nearLamp: lamp, onPond: pond && !air, seatNear: seatNear, px: Math.round(p.x), py: Math.round(p.y) }, burst || {}));
+    if (burst || s.near !== near || s.moving !== moving || s.facing !== p.facing || s.air !== air || s.nearLamp !== lamp || s.onPond !== (pond && !air) || s.seatNear !== seatNear || s.boardNear !== boardNear) {
+      this.setState(Object.assign({ near: near, moving: moving, facing: p.facing, air: air, nearLamp: lamp, onPond: pond && !air, seatNear: seatNear, boardNear: boardNear, px: Math.round(p.x), py: Math.round(p.y) }, burst || {}));
     }
   }
   keyName(e) {
@@ -597,6 +599,13 @@ class App extends PreactComponent {
       self.chatLoaded = true;
       if (!first && arr.length && self.chatSeen[arr[arr.length - 1].id] === now && arr[arr.length - 1].uid !== self.myUid) self.sfx('open');
       self.setState({ chat: arr });
+    });
+    D.onValue(D.query(D.ref(db, 'board'), D.orderByChild('at'), D.limitToLast(60)), function (snap) {
+      var val = snap.val() || {};
+      var arr = Object.keys(val).map(function (id) { return Object.assign({ id: id }, val[id]); })
+        .filter(function (m) { return m && (m.text || m.img); })
+        .sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+      self.setState({ board: arr });
     });
     this.setState({ netMode: 'online', myUid: this.myUid });
     D.get(D.ref(db, 'players/' + this.myUid)).then(function (snap) {
@@ -661,6 +670,12 @@ class App extends PreactComponent {
     if (!hit || hit.key !== key) { hit = { key: key, ch: buildCharacter(full, 5) }; this._spr[uid] = hit; }
     return hit.ch;
   }
+  miniFor(uid, cfg) {
+    if (!this._mini) this._mini = {};
+    var full = Object.assign({}, DEFAULT_CFG, cfg || {}), key = JSON.stringify(full), hit = this._mini[uid];
+    if (!hit || hit.key !== key) { hit = { key: key, front: charShadow(charGrid(full, 'front'), charPalette(full), 2) }; this._mini[uid] = hit; }
+    return hit.front;
+  }
   allReplies() {
     var st = this.state || {}, self = this;
     if (st.netMode !== 'online') return st.replies || {};
@@ -681,6 +696,66 @@ class App extends PreactComponent {
       if (m.uid === uid) return (seen[m.id] && now - seen[m.id] < 6000) ? m.text : null;
     }
     return null;
+  }
+  openBoard() { this.keys = {}; this.sfx('open'); this.setState({ boardOpen: true, boardErr: '', delArm: null, viewImg: '' }); }
+  resizeImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, max = 560, out = '';
+        URL.revokeObjectURL(url);
+        if (!w || !h) { reject(new Error('empty')); return; }
+        for (var tries = 0; tries < 5; tries++) {
+          var sc = Math.min(1, max / Math.max(w, h)), cw = Math.max(1, Math.round(w * sc)), chh = Math.max(1, Math.round(h * sc));
+          var c = document.createElement('canvas'); c.width = cw; c.height = chh;
+          var x = c.getContext('2d'); x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, cw, chh); x.drawImage(img, 0, 0, cw, chh);
+          var q = 0.78;
+          out = c.toDataURL('image/jpeg', q);
+          while (out.length > 90000 && q > 0.45) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+          if (out.length <= 90000) break;
+          max = Math.round(max * 0.75);
+        }
+        if (out.length > 90000 || out.indexOf('data:image/jpeg;base64,') !== 0) { reject(new Error('big')); return; }
+        resolve(out);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+  postMemo() {
+    var st = this.state || {}, text = Array.from((st.boardDraft || '').trim()).slice(0, 60).join(''), imgData = st.boardImg || '';
+    if (st.boardBusy) return;
+    if (!text && !imgData) { this.setState({ boardErr: '글이나 사진 중 하나는 있어야 해요' }); return; }
+    var who = (st.nick || '나').trim() || '나', color = MEMO_COLORS[Math.floor(Math.random() * MEMO_COLORS.length)];
+    var memo = { uid: this.myUid || this.myKey(), name: who, color: color };
+    if (text) memo.text = text;
+    if (imgData) memo.img = imgData;
+    var self = this;
+    if (this.fb && this.myUid) {
+      var D = this.fb.D;
+      memo.at = D.serverTimestamp();
+      this.setState({ boardBusy: true, boardErr: '' });
+      D.push(D.ref(this.fb.db, 'board'), memo).then(function () {
+        self.sfx('post'); self.setState({ boardBusy: false, boardDraft: '', boardImg: '' });
+      }).catch(function (err) {
+        console.error('[모임방] 게시판 올리기 실패', err);
+        self.setState({ boardBusy: false, boardErr: '올리지 못했어요. 게시판 규칙이 적용됐는지 확인해 주세요' });
+      });
+    } else {
+      memo.at = Date.now(); memo.id = 'local' + Date.now();
+      this.sfx('post');
+      this.setState({ board: (st.board || []).concat([memo]).slice(-60), boardDraft: '', boardImg: '', boardErr: '' });
+    }
+  }
+  deleteMemo(id) {
+    var st = this.state || {}, self = this;
+    if (this.fb && this.myUid && String(id).indexOf('local') !== 0) {
+      var D = this.fb.D;
+      D.remove(D.ref(this.fb.db, 'board/' + id)).catch(function (err) { console.error(err); self.setState({ boardErr: '지우지 못했어요' }); });
+    } else {
+      this.setState({ board: (st.board || []).filter(function (m) { return m.id !== id; }) });
+    }
+    this.setState({ delArm: null });
   }
   sendChat(text) {
     var st = this.state || {}, who = (st.nick || '나').trim() || '나';
@@ -1122,9 +1197,9 @@ class App extends PreactComponent {
         if (!self.state || self.state.screen !== 'room') return;
         self.ensureMusic();
         if (e.target && e.target.tagName === 'INPUT') return;
-        if (e.key === 'Escape') { if (self.state.chatOpen) vals.closeChat(); else if (self.state.thread != null) vals.closeThread(); else if (self.state.photo) vals.closePhoto(); else if (self.state.inviteOpen) vals.closeInvite(); return; }
+        if (e.key === 'Escape') { if (self.state.viewImg) self.setState({ viewImg: '' }); else if (self.state.peopleOpen) vals.closePeople(); else if (self.state.boardOpen) vals.closeBoard(); else if (self.state.chatOpen) vals.closeChat(); else if (self.state.thread != null) vals.closeThread(); else if (self.state.photo) vals.closePhoto(); else if (self.state.inviteOpen) vals.closeInvite(); return; }
         if (self.modalOpen()) return;
-        if (e.key === 'ArrowDown') { e.preventDefault(); self.toggleSit(); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (self.state.boardNear && self.sitting == null) self.openBoard(); else self.toggleSit(); return; }
         if (e.key === 'Enter') { e.preventDefault(); vals.openChat(); return; }
         var n = self.keyName(e);
         if (!n) return;
@@ -1184,7 +1259,7 @@ class App extends PreactComponent {
     var justNY = now.getMonth() === 0 && now.getDate() === 1;
     function two(n) { return String(n).padStart(2, '0'); }
     var dd = Math.floor(diff / 86400000), hh = Math.floor(diff / 3600000) % 24, mm = Math.floor(diff / 60000) % 60, ss = Math.floor(diff / 1000) % 60;
-    var modal = st.thread != null || !!st.photo || !!st.inviteOpen;
+    var modal = st.thread != null || !!st.photo || !!st.inviteOpen || !!st.boardOpen || !!st.peopleOpen;
     vals.showCountdown = screen === 'room' && !st.photo;
     vals.cdRunning = !justNY; vals.cdDone = justNY;
     vals.cdTitle = justNY ? now.getFullYear() + '년이 밝았어요!' : (now.getFullYear() + 1) + '년까지';
@@ -1222,7 +1297,7 @@ class App extends PreactComponent {
       if (e.key === 'Enter' && !(e.nativeEvent && e.nativeEvent.isComposing) && !e.isComposing) { e.preventDefault(); vals.sendChat(); }
     };
     var seatIdx = st.sitting != null ? st.sitting : (st.seatNear != null ? st.seatNear : -1);
-    vals.showSitPrompt = screen === 'room' && !modal && seatIdx >= 0 && !st.isTouch;
+    vals.showSitPrompt = screen === 'room' && !modal && seatIdx >= 0 && !st.isTouch && !st.boardNear;
     vals.sitPrompt = st.sitting != null ? '← → 를 누르면 일어나요' : (SEATS[seatIdx] && SEATS[seatIdx].type === 'pond' ? '↓ 연못가에 앉기' : '↓ 벤치에 앉기');
     vals.sitShort = st.sitting != null ? '일어나기' : '앉기';
     vals.toggleSit = function () { self.toggleSit(); };
@@ -1246,7 +1321,8 @@ class App extends PreactComponent {
     function hold(name, on) { return function (e) { if (e && e.preventDefault) e.preventDefault(); self.keys[name] = on; }; }
     vals.showTouch = screen === 'room' && !!st.isTouch && !modal;
     vals.touchTalk = st.near != null && st.near >= 0;
-    vals.touchSit = seatIdx >= 0;
+    vals.touchSit = seatIdx >= 0 && !st.boardNear;
+    vals.touchBoard = !!st.boardNear;
     vals.tLeftDown = hold('left', true); vals.tLeftUp = hold('left', false);
     vals.tRightDown = hold('right', true); vals.tRightUp = hold('right', false);
     vals.tJumpDown = hold('jump', true); vals.tJumpUp = hold('jump', false);
@@ -1283,6 +1359,88 @@ class App extends PreactComponent {
       if (e.key === 'Enter' && !(e.nativeEvent && e.nativeEvent.isComposing)) { e.preventDefault(); vals.submitReply(); }
     };
     vals.closeThread = function () { self.setState({ thread: null }); focusStage(); };
+    // notice board
+    var memos = st.board || [], myUid = this.myUid || this.myKey();
+    vals.boardLeft = BOARD_X - 130;
+    vals.boardCount = memos.length;
+    var pinSpots = [[14, 10, -4], [84, 6, 3], [154, 12, -2], [20, 76, 2], [90, 72, -3], [158, 78, 4]];
+    vals.boardNotes = memos.slice(-6).reverse().map(function (m, i) {
+      var sp = pinSpots[i];
+      return { left: sp[0], top: sp[1], rot: sp[2], bg: m.color || '#FFF3A8', hasImg: !!m.img, img: m.img || '', noImg: !m.img };
+    });
+    vals.openBoard = function () { if (self.state && self.state.screen === 'room') self.openBoard(); };
+    vals.showBoardPrompt = screen === 'room' && !modal && !!st.boardNear && !st.isTouch;
+    vals.boardOpen = !!st.boardOpen;
+    vals.boardListH = st.portrait ? Math.max(380, Math.min(1000, (st.viewH || 800) - 560)) : 380;
+    vals.boardColMin = st.portrait ? 280 : 190;
+    vals.boardEmpty = memos.length === 0;
+    vals.boardMemos = memos.slice().reverse().map(function (m, i) {
+      var mine = m.uid === myUid, armed = st.delArm === m.id;
+      return {
+        name: m.name || '익명', text: m.text || '', hasText: !!m.text, hasImg: !!m.img, img: m.img || '', bg: m.color || '#FFF3A8',
+        rot: ((i * 37) % 5 - 2) * 0.6, mine: mine, nameBg: mine ? accent : '#FFFFFF',
+        delLabel: armed ? '정말 지울까요?' : '지우기', delBg: armed ? '#FF8A7A' : '#FFFFFF',
+        del: function () { if (self.state.delArm === m.id) self.deleteMemo(m.id); else self.setState({ delArm: m.id }); },
+        zoom: function () { self.setState({ viewImg: m.img }); }
+      };
+    });
+    vals.boardDraft = st.boardDraft || '';
+    vals.boardDraftCount = Array.from(vals.boardDraft).length;
+    vals.onBoardDraft = function (e) { self.setState({ boardDraft: Array.from(e.target.value).slice(0, 60).join(''), boardErr: '' }); };
+    vals.onBoardKey = function (e) {
+      if (e.key === 'Escape') { vals.closeBoard(); return; }
+      if (e.key === 'Enter' && !(e.nativeEvent && e.nativeEvent.isComposing) && !e.isComposing) { e.preventDefault(); self.postMemo(); }
+    };
+    vals.hasBoardImg = !!st.boardImg; vals.boardImg = st.boardImg || '';
+    vals.boardBusy = !!st.boardBusy; vals.boardErr = st.boardErr || ''; vals.hasBoardErr = !!st.boardErr;
+    vals.postLabel = st.boardBusy ? '올리는 중…' : '붙이기';
+    vals.imgLabel = st.boardImg ? '사진 바꾸기' : '사진 첨부';
+    vals.onBoardFile = function (e) {
+      var input = e.target, file = input.files && input.files[0];
+      if (!file) return;
+      if (file.type && file.type.indexOf('image/') !== 0) { self.setState({ boardErr: '사진 파일만 붙일 수 있어요' }); input.value = ''; return; }
+      self.setState({ boardBusy: true, boardErr: '' });
+      self.resizeImage(file).then(function (data) { self.setState({ boardImg: data, boardBusy: false }); })
+        .catch(function () { self.setState({ boardBusy: false, boardErr: '이 사진은 열 수 없어요. 다른 사진으로 해 주세요' }); });
+      input.value = '';
+    };
+    vals.clearBoardImg = function () { self.setState({ boardImg: '' }); };
+    vals.postMemo = function () { self.postMemo(); };
+    vals.closeBoard = function () { self.setState({ boardOpen: false, delArm: null, viewImg: '' }); focusStage(); };
+    vals.stopProp = function (e) { if (e && e.stopPropagation) e.stopPropagation(); };
+    vals.hasViewImg = !!st.viewImg; vals.viewImg = st.viewImg || '';
+    vals.closeView = function () { self.setState({ viewImg: '' }); };
+    // people list
+    vals.peopleOpen = !!st.peopleOpen;
+    vals.openPeople = function () { self.keys = {}; self.sfx('open'); self.setState({ peopleOpen: true }); };
+    vals.closePeople = function () { self.setState({ peopleOpen: false }); focusStage(); };
+    function joined(t) { if (typeof t !== 'number') return ''; var d = new Date(t); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 참여'; }
+    var meRec = (st.players || {})[this.myUid] || {};
+    var repAll = replies;
+    function goTo(x) {
+      return function () {
+        var tx = Math.max(0, Math.min(WORLD_W - 170, Math.round((x || START_X) + (x > WORLD_W - 400 ? -130 : 130))));
+        self.sitting = null; self.pos.x = tx; self.pos.y = 0; self.pos.vy = 0; self.pos.facing = tx > x ? -1 : 1;
+        self.setState({ peopleOpen: false, sitting: null, px: tx }); self.sfx('jump'); focusStage();
+      };
+    }
+    var others = roster.slice().sort(function (a, b) { return (b.online ? 1 : 0) - (a.online ? 1 : 0) || (a.createdAt || 0) - (b.createdAt || 0); });
+    var peopleList = [{
+      mini: self.miniFor('__me', st.cfg), name: vals.myName, line: vals.myLine, me: true, notMe: false, online: true,
+      status: '나', statusBg: accent, joined: joined(meRec.createdAt), replyCount: (repAll[myKey] || []).length,
+      openThread: function () { self.setState({ peopleOpen: false }); self.openThread(self.myKey()); }, go: function () {}
+    }].concat(others.map(function (o) {
+      return {
+        mini: self.miniFor(o.uid, o.cfg), name: o.name, line: o.line || '', me: false, notMe: true, online: !!o.online,
+        status: o.online ? '접속 중' : '자리 비움', statusBg: o.online ? '#9BE38C' : '#D9DEEC', joined: joined(o.createdAt),
+        replyCount: (repAll[o.uid] || []).length,
+        openThread: function () { self.setState({ peopleOpen: false }); self.openThread(o.uid); }, go: goTo(o.x)
+      };
+    }));
+    vals.peopleList = peopleList;
+    vals.peopleTotal = peopleList.length;
+    vals.peopleOnline = others.filter(function (o) { return o.online; }).length + 1;
+    vals.peopleListH = st.portrait ? Math.max(420, Math.min(1100, (st.viewH || 800) - 360)) : 520;
     // photo
     vals.photoOpen = !!st.photo;
     vals.flashCls = (st.flashN || 0) % 2 ? 'flashA' : 'flashB';
@@ -1311,10 +1469,10 @@ class App extends PreactComponent {
   }
 }
 
-
 App.prototype.render = function () {
   const v = this.renderVals();
-  return html`<div class="stage" tabindex="0" ref=${v.setRoot} onKeyDown=${v.onKeyDown} onKeyUp=${v.onKeyUp} onBlur=${v.onBlur} onPointerDown=${v.focusRoot} style="width: ${v.viewW}px; height: ${v.viewH}px; position: relative; overflow: hidden; background: ${v.stageBg}; font-family: 'Jua', sans-serif; color: #24304F">
+  return html`
+<div class="stage" tabindex="0" ref=${v.setRoot} onKeyDown=${v.onKeyDown} onKeyUp=${v.onKeyUp} onBlur=${v.onBlur} onPointerDown=${v.focusRoot} style="width: ${v.viewW}px; height: ${v.viewH}px; position: relative; overflow: hidden; background: ${v.stageBg}; font-family: 'Jua', sans-serif; color: #24304F">
 
   
   <div ref=${v.refWorld} style="position: absolute; left: 0px; top: ${v.worldTopPx}px; width: ${v.worldW}px; height: 802px; transform: translateX(${v.camWorld}px); will-change: transform">
@@ -1372,6 +1530,35 @@ App.prototype.render = function () {
         <div ref=${v.refHalo} style="position: absolute; left: ${v.haloX}px; top: 48px; width: 150px; height: 212px; border-radius: 50%; background: #FFF1CC"></div>
       ` : null}
     </div>
+
+    
+    <button type="button" class="bubble-btn board-btn" onClick=${v.openBoard} aria-label="우리들의 게시판 열기, 메모 ${v.boardCount}개" style="position: absolute; left: ${v.boardLeft}px; top: 462px; width: 260px; height: 248px; z-index: 2">
+      <div aria-hidden="true" style="position: absolute; left: 34px; top: 150px; width: 14px; height: 96px; background: #6B3F22; border: 3px solid #2A160C; border-top: none"></div>
+      <div aria-hidden="true" style="position: absolute; left: 212px; top: 150px; width: 14px; height: 96px; background: #6B3F22; border: 3px solid #2A160C; border-top: none"></div>
+      <div aria-hidden="true" style="position: absolute; left: 6px; top: 0px; width: 248px; height: 14px; background: #F4F7FF; border: 3px solid #2A160C; border-bottom: none; box-shadow: inset 0 -4px 0 #C9D6EE"></div>
+      <div aria-hidden="true" style="position: absolute; left: 0px; top: 14px; width: 260px; height: 12px; background: #8A5530; border: 3px solid #2A160C; box-sizing: border-box"></div>
+      <div aria-hidden="true" style="position: absolute; left: 12px; top: 26px; width: 236px; height: 146px; background: #B97A47; border: 4px solid #2A160C; box-sizing: border-box; box-shadow: inset 0 0 0 4px #8A5530">
+        ${(v.boardNotes || []).map((n, $index) => html`
+          <div style="position: absolute; left: ${n.left}px; top: ${n.top}px; width: 58px; height: 54px; background: ${n.bg}; border: 2px solid #2A160C; transform: rotate(${n.rot}deg); box-sizing: border-box; padding: 6px 4px 4px; overflow: hidden">
+            ${n.hasImg ? html`
+              <img src=${n.img} alt="" style="display: block; width: 46px; height: 38px; object-fit: cover; border: 1px solid #2A160C" />
+            ` : null}
+            ${n.noImg ? html`
+              <div style="height: 3px; background: #8C8270; margin: 4px 2px 6px"></div>
+              <div style="height: 3px; background: #8C8270; margin: 0 8px 6px 2px"></div>
+              <div style="height: 3px; background: #8C8270; margin: 0 14px 0 2px"></div>
+            ` : null}
+            <div style="position: absolute; left: 24px; top: -1px; width: 7px; height: 7px; background: #E0446A; border: 1px solid #2A160C"></div>
+          </div>
+        `)}
+      </div>
+      <div aria-hidden="true" style="position: absolute; left: 76px; top: -4px; width: 6px; height: 8px; background: #2A160C"></div>
+      <div aria-hidden="true" style="position: absolute; left: 178px; top: -4px; width: 6px; height: 8px; background: #2A160C"></div>
+      <div class="board-sign" aria-hidden="true" style="position: absolute; left: 60px; top: -30px; width: 140px; height: 30px; background: #E9C089; border: 3px solid #2A160C; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #3A2010">우리들의 게시판</div>
+      ${(v.garland || []).map((b, $index) => html`
+        <div class="glow" aria-hidden="true" style="position: absolute; left: calc(10px + ${$index} * 15.5px); top: 24px; width: 6px; height: 7px; background: ${b.c}; border: 1px solid #2A160C; box-shadow: 0 0 8px 2px rgba(255,214,90,.6); animation-delay: ${b.d}s"></div>
+      `)}
+    </button>
 
     
     ${(v.benchesW || []).map((b, $index) => html`
@@ -1474,10 +1661,10 @@ App.prototype.render = function () {
         <div style="padding: 7px 14px; background: rgba(14,34,56,.6); color: #FFF4D6; font-size: 14px">${v.hintText}</div>
       ` : null}
     </div>
-    <div style="position: absolute; left: 24px; top: 20px; display: flex; align-items: center; gap: 10px; background: rgba(14,34,56,.85); color: #FFFFFF; padding: 10px 16px; font-family: 'Press Start 2P', monospace; font-size: 12px">
+    <button type="button" class="pxbtn" onClick=${v.openPeople} aria-label="모임방 사람들 목록 보기" style="position: absolute; left: 24px; top: 20px; display: flex; align-items: center; gap: 10px; background: rgba(14,34,56,.85); color: #FFFFFF; padding: 10px 16px; border: 2px solid rgba(255,244,214,.5); font-family: 'Press Start 2P', monospace; font-size: 12px; pointer-events: auto">
       <span style="width: 8px; height: 8px; background: #7FE08A"></span>
-      PLAYERS ${v.count}
-    </div>
+      PLAYERS ${v.count}<span style="font-family: 'Jua', sans-serif; font-size: 14px; color: #FFE58A; margin-left: 4px">목록 ▸</span>
+    </button>
     <div style="position: absolute; right: 20px; top: 16px; display: flex; align-items: center; gap: 8px">
       <button type="button" class="pxbtn hud-btn" onClick=${v.copyInvite}>초대하기</button>
       <button type="button" class="pxbtn hud-btn" onClick=${v.takePhoto}>사진 찍기</button>
@@ -1492,6 +1679,11 @@ App.prototype.render = function () {
         <div class="blink" style="padding: 6px 12px; background: ${v.accent}; border: 3px solid #0E2238; color: #0E2238; font-size: 15px">${v.sitPrompt}</div>
       </div>
     ` : null}
+    ${v.showBoardPrompt ? html`
+      <div style="position: absolute; left: calc(50% - 170px); top: ${v.sitTop}px; width: 340px; display: flex; justify-content: center; pointer-events: none">
+        <div class="blink" style="padding: 6px 12px; background: ${v.accent}; border: 3px solid #0E2238; color: #0E2238; font-size: 15px">↓ 게시판 보기 · 클릭해도 열려요</div>
+      </div>
+    ` : null}
   ` : null}
 
   
@@ -1504,6 +1696,9 @@ App.prototype.render = function () {
       <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.openChat}>채팅</button>
       ${v.touchTalk ? html`
         <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.openNear}>댓글</button>
+      ` : null}
+      ${v.touchBoard ? html`
+        <button type="button" class="pxbtn touch-btn" style="width: 130px; font-size: 22px" onClick=${v.openBoard}>게시판</button>
       ` : null}
       ${v.touchSit ? html`
         <button type="button" class="pxbtn touch-btn" style="width: 120px; font-size: 22px" onClick=${v.toggleSit}>${v.sitShort}</button>
@@ -1554,6 +1749,106 @@ App.prototype.render = function () {
           <input id="thread-input" type="text" value=${v.replyDraft} onInput=${v.onReplyDraft} onKeyDown=${v.onReplyKey} placeholder="댓글을 남겨 보세요 (최대 40자)" style="flex: 1; min-width: 0; height: 50px; padding: 0 14px; font-family: 'Jua', sans-serif; font-size: 18px; border: 3px solid #0E2238; background: #FFFFFF; color: #0E2238; box-sizing: border-box" />
           <button type="button" class="pxbtn" onClick=${v.submitReply} style="height: 50px; padding: 0 20px; background: ${v.accent}; border: 3px solid #0E2238; box-shadow: 0 4px 0 #0E2238; color: #0E2238; font-family: 'Jua', sans-serif; font-size: 18px">댓글 달기</button>
         </div>
+      </div>
+    </div>
+  ` : null}
+
+  
+  ${v.boardOpen ? html`
+    <div style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow-y: auto; padding: 24px 0; box-sizing: border-box; background: rgba(8,22,40,.6); display: flex; align-items: safe center; justify-content: center; z-index: 30">
+      <div role="dialog" aria-label="우리들의 게시판" class="invite-in" style="position: relative; width: min(820px, calc(100% - 40px)); background: #B97A47; border: 5px solid #2A160C; box-shadow: inset 0 0 0 6px #8A5530, 10px 10px 0 rgba(8,22,40,.6); padding: 22px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: #0E2238">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+          <span style="padding: 6px 16px; background: #E9C089; border: 3px solid #2A160C; font-size: 22px; color: #3A2010">우리들의 게시판</span>
+          <button type="button" class="pxbtn" onClick=${v.closeBoard} aria-label="게시판 닫기" style="width: 44px; height: 44px; background: #FFFFFF; font-family: 'Jua', sans-serif; color: #0E2238; border: 3px solid #0E2238; font-family: 'Press Start 2P', monospace; font-size: 12px">X</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(${v.boardColMin}px, 1fr)); gap: 16px; max-height: ${v.boardListH}px; overflow-y: auto; padding: 8px 6px 10px; align-items: start">
+          ${v.boardEmpty ? html`
+            <p style="grid-column: 1 / -1; margin: 0; padding: 30px 0; text-align: center; font-size: 17px; color: #FFF4D6">아직 붙은 메모가 없어요. 첫 메모를 붙여 보세요!</p>
+          ` : null}
+          ${(v.boardMemos || []).map((m, $index) => html`
+            <div style="position: relative; background: ${m.bg}; border: 3px solid #2A160C; box-shadow: 4px 4px 0 rgba(42,22,12,.45); padding: 16px 12px 10px; transform: rotate(${m.rot}deg); display: flex; flex-direction: column; gap: 8px">
+              <div aria-hidden="true" style="position: absolute; left: calc(50% - 6px); top: -7px; width: 12px; height: 12px; background: #E0446A; border: 2px solid #2A160C"></div>
+              ${m.hasImg ? html`
+                <button type="button" class="bubble-btn" onClick=${m.zoom} aria-label="${m.name}의 사진 크게 보기" style="width: 100%">
+                  <img src=${m.img} alt="${m.name}이 붙인 사진" style="display: block; width: 100%; max-height: 200px; object-fit: cover; border: 2px solid #2A160C; background: #FFFFFF" />
+                </button>
+              ` : null}
+              ${m.hasText ? html`
+                <p style="margin: 0; font-size: 16px; line-height: 1.45; word-break: break-word; white-space: pre-wrap">${m.text}</p>
+              ` : null}
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px">
+                <span style="padding: 2px 8px; background: ${m.nameBg}; border: 2px solid #2A160C; font-size: 13px">${m.name}</span>
+                ${m.mine ? html`
+                  <button type="button" class="pxbtn" onClick=${m.del} style="min-height: 32px; padding: 0 10px; background: ${m.delBg}; border: 2px solid #2A160C; font-family: 'Jua', sans-serif; font-size: 13px; color: #0E2238">${m.delLabel}</button>
+                ` : null}
+              </div>
+            </div>
+          `)}
+        </div>
+        <div style="background: #FFF8EA; border: 3px solid #2A160C; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+          ${v.hasBoardImg ? html`
+            <div style="display: flex; align-items: center; gap: 12px">
+              <img src=${v.boardImg} alt="붙일 사진 미리보기" style="width: 84px; height: 64px; object-fit: cover; border: 2px solid #2A160C" />
+              <button type="button" class="pxbtn" onClick=${v.clearBoardImg} style="min-height: 36px; padding: 0 12px; background: #FFFFFF; border: 2px solid #2A160C; font-family: 'Jua', sans-serif; font-size: 14px; color: #0E2238">사진 빼기</button>
+            </div>
+          ` : null}
+          <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <label class="pxbtn" style="position: relative; display: flex; align-items: center; height: 50px; padding: 0 14px; background: #FFFFFF; font-family: 'Jua', sans-serif; color: #0E2238; border: 3px solid #0E2238; font-size: 17px; box-sizing: border-box; overflow: hidden">
+              ${v.imgLabel}
+              <input type="file" accept="image/*" onChange=${v.onBoardFile} style="position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0" />
+            </label>
+            <label for="board-input" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">메모 입력</label>
+            <input id="board-input" type="text" value=${v.boardDraft} onInput=${v.onBoardDraft} onKeyDown=${v.onBoardKey} placeholder="메모를 남겨 보세요 (최대 60자)" style="flex: 1 1 220px; min-width: 0; height: 50px; padding: 0 14px; font-family: 'Jua', sans-serif; font-size: 18px; border: 3px solid #0E2238; background: #FFFFFF; color: #0E2238; box-sizing: border-box" />
+            <button type="button" class="pxbtn" onClick=${v.postMemo} style="height: 50px; padding: 0 20px; background: ${v.accent}; font-family: 'Jua', sans-serif; color: #0E2238; border: 3px solid #0E2238; box-shadow: 0 4px 0 #0E2238; font-size: 18px">${v.postLabel}</button>
+          </div>
+          ${v.hasBoardErr ? html`
+            <p role="alert" style="margin: 0; font-size: 14px; color: #B3261E">${v.boardErr}</p>
+          ` : null}
+          <p style="margin: 0; font-size: 13px; color: #6B7790">사진은 자동으로 작게 줄여서 올라가요 · 내가 붙인 메모만 지울 수 있어요</p>
+        </div>
+        ${v.hasViewImg ? html`
+          <button type="button" class="bubble-btn" onClick=${v.closeView} aria-label="사진 닫기" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: rgba(8,22,40,.85); display: flex; align-items: center; justify-content: center; z-index: 2">
+            <img src=${v.viewImg} alt="크게 본 사진" style="max-width: calc(100% - 40px); max-height: calc(100% - 40px); border: 4px solid #FFF8EA" />
+          </button>
+        ` : null}
+      </div>
+    </div>
+  ` : null}
+
+  
+  ${v.peopleOpen ? html`
+    <div style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow-y: auto; padding: 24px 0; box-sizing: border-box; background: rgba(8,22,40,.6); display: flex; align-items: safe center; justify-content: center; z-index: 30">
+      <div role="dialog" aria-label="모임방 사람들" class="invite-in" style="width: min(680px, calc(100% - 40px)); background: #FFF8EA; border: 4px solid #0E2238; box-shadow: 10px 10px 0 rgba(8,22,40,.6); padding: 22px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; color: #0E2238">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 22px">모임방 사람들</span>
+            <span style="font-size: 14px; color: #6B7790">지금까지 ${v.peopleTotal}명 · 지금 접속 ${v.peopleOnline}명</span>
+          </div>
+          <button type="button" class="pxbtn" onClick=${v.closePeople} aria-label="목록 닫기" style="width: 44px; height: 44px; background: #FFFFFF; font-family: 'Jua', sans-serif; color: #0E2238; border: 3px solid #0E2238; font-family: 'Press Start 2P', monospace; font-size: 12px">X</button>
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 2px; display: flex; flex-direction: column; gap: 10px; max-height: ${v.peopleListH}px; overflow-y: auto">
+          ${(v.peopleList || []).map((p, $index) => html`
+            <li style="display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: #FFFFFF; border: 3px solid #0E2238">
+              <div aria-hidden="true" style="flex: none; position: relative; width: 56px; height: 64px; background: #E8EEF8; border: 2px solid #0E2238; overflow: hidden">
+                <div style="position: absolute; left: 2px; top: 1px; width: 2px; height: 2px; box-shadow: ${p.mini}"></div>
+              </div>
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                  <span style="font-size: 19px">${p.name}</span>
+                  <span style="padding: 1px 7px; background: ${p.statusBg}; border: 2px solid #0E2238; font-size: 12px">${p.status}</span>
+                  <span style="font-size: 12px; color: #6B7790">${p.joined}</span>
+                </div>
+                <span style="font-size: 15px; color: #3A4660; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">${p.line}</span>
+              </div>
+              <div style="flex: none; display: flex; gap: 6px">
+                <button type="button" class="pxbtn" onClick=${p.openThread} style="min-height: 40px; padding: 0 10px; background: #FFFFFF; border: 2px solid #0E2238; font-family: 'Jua', sans-serif; font-size: 14px; color: #0E2238">댓글 ${p.replyCount}</button>
+                ${p.notMe ? html`
+                  <button type="button" class="pxbtn" onClick=${p.go} style="min-height: 40px; padding: 0 10px; background: ${v.accent}; border: 2px solid #0E2238; font-family: 'Jua', sans-serif; font-size: 14px; color: #0E2238">찾아가기</button>
+                ` : null}
+              </div>
+            </li>
+          `)}
+        </ul>
       </div>
     </div>
   ` : null}
@@ -1789,7 +2084,8 @@ App.prototype.render = function () {
       </div>
     </div>
   ` : null}
-</div>`;
+</div>
+`;
 };
 
 render(html`<${App} />`, document.getElementById('app'));
