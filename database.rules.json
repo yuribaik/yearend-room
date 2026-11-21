@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "players": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "name": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 8" },
+        "line": { ".validate": "newData.isString() && newData.val().length <= 24" },
+        "cfg": { ".validate": "newData.hasChildren()" },
+        "x": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3600" },
+        "y": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 400" },
+        "facing": { ".validate": "newData.isNumber()" },
+        "moving": { ".validate": "newData.isBoolean()" },
+        "sitting": { ".validate": "newData.isBoolean()" },
+        "sitType": { ".validate": "newData.isString() && newData.val().length <= 8" },
+        "online": { ".validate": "newData.isBoolean()" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "updatedAt": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
+    "replies": {
+      ".read": true,
+      "$thread": {
+        "$id": {
+          ".write": "auth != null && !data.exists()",
+          ".validate": "newData.hasChildren(['name', 'text', 'uid', 'at']) && newData.child('uid').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length >= 1 && newData.child('text').val().length <= 40 && newData.child('name').isString() && newData.child('name').val().length <= 8 && newData.child('at').isNumber()"
+        }
+      }
+    }
+  }
+}

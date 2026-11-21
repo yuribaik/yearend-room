@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B1A2C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="연말 모임방">
+<link rel="manifest" href="manifest.webmanifest">
+<title>우리들의 연말 모임방</title>
+<meta name="description" content="올 한 해 고생한 우리끼리, 눈 내리는 픽셀 모임방에 모여서 한마디씩 남기고 가요.">
+<meta property="og:title" content="우리들의 연말 모임방">
+<meta property="og:description" content="캐릭터를 만들고 친구들과 연말을 보내요.">
+<meta property="og:image" content="assets/winter-world.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;family=Jua&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FFFFFF}a:hover{color:#FFE27A}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes fall{0%{transform:translateY(0)}100%{transform:translateY(1700px)}}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes drift{0%{transform:translateX(0)}100%{transform:translateX(40px)}}
+@keyframes glow{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes tw{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes smoke{0%{opacity:.8;transform:translate(0,0)}100%{opacity:0;transform:translate(10px,-36px)}}
+@keyframes ripple{0%,100%{opacity:.9}50%{opacity:.35}}
+@keyframes f1{0%,24.9%{opacity:1}25%,100%{opacity:0}}
+@keyframes f2{0%,24.9%{opacity:0}25%,49.9%{opacity:1}50%,74.9%{opacity:0}75%,100%{opacity:1}}
+@keyframes f3{0%,49.9%{opacity:0}50%,74.9%{opacity:1}75%,100%{opacity:0}}
+@keyframes trudge{0%,24.9%{transform:translateY(4px) rotate(-2deg)}25%,49.9%{transform:translateY(-3px) rotate(0deg)}50%,74.9%{transform:translateY(4px) rotate(2deg)}75%,100%{transform:translateY(-3px) rotate(0deg)}}
+@keyframes dust{0%{opacity:.9;transform:translate(0,0)}70%{opacity:0;transform:translate(-16px,-10px)}100%{opacity:0;transform:translate(-16px,-10px)}}
+.bob{animation:bob 1.6s steps(2) infinite}
+.walk{animation:trudge .68s linear infinite;transform-origin:50% 100%}
+.still{animation:none}
+.f1{animation:f1 .68s linear infinite}
+.f2{animation:f2 .68s linear infinite}
+.f3{animation:f3 .68s linear infinite}
+.dust{animation:dust .34s ease-out infinite}
+.off{opacity:0}
+.on{opacity:1}
+.flake{animation:fall 12s steps(80) infinite}
+.blink{animation:blink 1.1s steps(1) infinite}
+.cloud{animation:drift 16s steps(10) infinite alternate}
+.glow{animation:glow 1.8s ease-in-out infinite}
+.tw{animation:tw 2.6s steps(3) infinite}
+.smoke{animation:smoke 2.4s steps(6) infinite}
+.ripple{animation:ripple 1.4s steps(2) infinite}
+@keyframes driftc{0%{transform:translateX(-40px)}100%{transform:translateX(40px)}}
+@keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(.8)}}
+@keyframes flicker{0%,100%{opacity:.9}40%{opacity:.6}45%{opacity:.95}70%{opacity:.7}}
+@keyframes shimmer{0%,100%{opacity:.9;transform:translateX(0)}50%{opacity:.35;transform:translateX(4px)}}
+@keyframes dropA{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--drift),var(--fall))}}
+@keyframes dropB{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--drift),var(--fall))}}
+@keyframes ring{0%{opacity:.9;transform:scale(.4)}100%{opacity:0;transform:scale(1.5)}}
+@keyframes shoot{0%{opacity:0;translate:0 0}2%{opacity:1}9%{opacity:0;translate:-260px 120px}100%{opacity:0;translate:-260px 120px}}
+.drift{animation:driftc 22s ease-in-out infinite alternate}
+.pulse{animation:pulse 3s ease-in-out infinite}
+.flicker{animation:flicker 4s steps(8) infinite}
+.shimmer{animation:shimmer 1.6s steps(4) infinite}
+.dropA{animation:dropA 1.3s ease-in forwards}
+.dropB{animation:dropB 1.3s ease-in forwards}
+.idle{opacity:0}
+.ring{animation:ring 1.2s ease-out infinite}
+.shoot{opacity:0;animation:shoot 11s linear infinite}
+.flake{animation:fall 12s steps(80) infinite}
+@keyframes fall{0%{transform:translateY(0)}100%{transform:translateY(1700px)}}
+@keyframes smoke{0%{opacity:.8;transform:translate(0,0)}100%{opacity:0;transform:translate(12px,-40px)}}
+.smoke{animation:smoke 2.6s steps(6) infinite}
+.pxb{background:#1B1719;padding:3px;clip-path:polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);max-width:200px}
+.pxb-in{clip-path:polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px), 0 6px, 3px 6px, 3px 3px, 6px 3px);padding:7px 12px 8px;font-size:15px;line-height:1.35;text-align:center;color:#1B1719;word-break:keep-all}
+.pxtail{position:relative;width:15px;height:15px;margin-top:-3px;margin-left:-22px}
+.pxname{display:flex;align-items:center;gap:5px;margin:4px 0 2px;font-size:16px;color:#FFFFFF;white-space:nowrap;text-shadow:2px 0 #1B1719,-2px 0 #1B1719,0 2px #1B1719,0 -2px #1B1719,2px 2px #1B1719,-2px 2px #1B1719,2px -2px #1B1719,-2px -2px #1B1719}
+@keyframes inviteIn{0%{opacity:0;transform:translateY(-30px) rotate(-1.5deg)}70%{opacity:1;transform:translateY(4px) rotate(.3deg)}100%{opacity:1;transform:translateY(0) rotate(0)}}
+.invite-in{animation:inviteIn .7s steps(10) both}
+.bubble-btn{background:none;border:none;padding:0;margin:0;cursor:pointer;font:inherit;color:inherit;display:block}
+.bubble-btn:hover .pxb-in{filter:brightness(.97)}
+.reply-tag{display:block;margin-top:4px;font-size:11px;color:#3F6E9E}
+.hud-btn{min-height:44px;padding:0 14px;background:#F4F7FF;border:3px solid #0E2238;color:#0E2238;font-family:'Jua',sans-serif;font-size:16px}
+.touch-btn{width:110px;height:110px;background:rgba(244,247,255,.92);border:4px solid #0E2238;box-shadow:0 6px 0 #0E2238;color:#0E2238;font-family:'Jua',sans-serif;font-size:34px;touch-action:none}
+.cd-num{font-family:'Press Start 2P',monospace;font-size:40px;color:#FFE58A;text-shadow:4px 4px 0 #0E2238,0 0 18px rgba(255,214,110,.7)}
+@keyframes flash{0%{opacity:.95}100%{opacity:0}}
+@keyframes flashB{0%{opacity:.95}100%{opacity:0}}
+.flashA{animation:flash .6s ease-out forwards}
+.flashB{animation:flashB .6s ease-out forwards}
+.stage:focus{outline:none}
+.pxbtn{cursor:pointer;user-select:none;-webkit-user-select:none}
+</style>
+<style>
+html,body{height:100%;margin:0;background:#0B1A2C;overflow:hidden}
+#fit{position:fixed;left:50%;top:50%;width:1280px;height:800px;transform-origin:center center}
+@keyframes tilt{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+.tilt{animation:tilt 2.2s ease-in-out infinite alternate}
+</style>
+<script src="firebase-config.js"></script>
+</head>
+<body>
+<div id="fit"><div id="app"></div></div>
+<script>
+  // Fill the screen: match the screen height and widen the scene to the screen's width.
+  // Narrow screens (portrait phones, square windows) fall back to fitting the whole 1280x800 scene.
+  (function () {
+    var el = document.getElementById('fit');
+    function fit() {
+      var W = window.innerWidth, H = window.innerHeight, s, lw, lh = 800;
+      var portrait = H > W * 1.15;
+      if (portrait) {
+        // tall screens: a 720-wide scene that fills the full height (sky above, controls below)
+        lw = 720; s = W / lw; lh = Math.max(800, Math.round(H / s));
+      } else {
+        s = H / 800; lw = W / s;
+        if (lw < 1280) { s = Math.min(W / 1280, H / 800); lw = 1280; }
+        lw = Math.min(Math.round(lw), 2400);
+      }
+      el.style.width = lw + 'px'; el.style.height = lh + 'px';
+      el.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+      window.STAGE_W = lw; window.STAGE_H = lh;
+      window.STAGE_PORTRAIT = portrait;
+      window.dispatchEvent(new Event('stageresize'));
+    }
+    window.addEventListener('resize', fit);
+    window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
+    fit();
+  })();
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

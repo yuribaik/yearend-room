@@ -1,0 +1,8 @@
+{
+  "name": "우리들의 연말 모임방",
+  "short_name": "연말 모임방",
+  "start_url": "./",
+  "display": "fullscreen",
+  "background_color": "#0B1A2C",
+  "theme_color": "#0B1A2C"
+}
