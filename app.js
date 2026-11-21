@@ -1130,7 +1130,7 @@ class App extends PreactComponent {
     vals.viewH = viewH; vals.worldTop = worldTop; vals.worldTopPx = worldTop - 2;
     vals.stageBg = portrait ? 'linear-gradient(#024F79 0px, #024F79 ' + worldTop + 'px, #6E3424 ' + (worldTop + 800) + 'px, #3A1E14 100%)' : '#1B4A6E';
     vals.tapeTop = worldTop + 4; vals.captionTop = worldTop + 704;
-    vals.cdTop = portrait ? Math.max(54, Math.round(worldTop * 0.3)) : 54;
+    vals.cdTop = portrait ? Math.max(90, Math.round(worldTop * 0.55)) : 54;
     vals.hintTop = portrait ? Math.max(176, worldTop + 150) : 176;
     vals.sitTop = vals.hintTop + 40;
     vals.rsvpPad = VIEW_W < 900 ? 0 : 28; vals.rsvpBorder = VIEW_W < 900 ? 'none' : '3px dashed #C9B998';
